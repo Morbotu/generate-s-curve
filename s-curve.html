@@ -1,0 +1,236 @@
+<html>
+  <head>
+    <script
+      type="text/javascript"
+      src="https://www.gstatic.com/charts/loader.js"
+    ></script>
+    <script type="text/javascript">
+      let firstLoad = true;
+      let nInput = 0;
+      google.charts.load("current", { packages: ["corechart"] });
+      google.charts.setOnLoadCallback(drawChart);
+
+      s_curve = (x) => 1 / (1 + Math.exp(-x));
+
+      function saveAsImage() {
+        // Load the SVG element and its dimensions
+        var svg = document.querySelector("#curve_chart svg");
+        var svgRect = svg.getBoundingClientRect();
+
+        // Create a new canvas element and set its width and height
+        var canvas = document.getElementById("chartCanvas");
+        canvas.width = svgRect.width;
+        canvas.height = svgRect.height;
+
+        // Draw the SVG onto the canvas
+        var ctx = canvas.getContext("2d");
+        var data = new XMLSerializer().serializeToString(svg);
+        var DOMURL = window.URL || window.webkitURL || window;
+        var img = new Image();
+
+        var svgBlob = new Blob([data], { type: "image/svg+xml;charset=utf-8" });
+        var url = DOMURL.createObjectURL(svgBlob);
+
+        img.onload = function () {
+          ctx.drawImage(img, 0, 0);
+          DOMURL.revokeObjectURL(url);
+
+          // Convert canvas to JPG
+          var imgURI = canvas.toDataURL("image/jpeg");
+
+          // Create a link and trigger a download
+          var link = document.createElement("a");
+          link.download = "chart.jpg";
+          link.href = imgURI;
+          link.click();
+        };
+        img.src = url;
+      }
+
+      function generateS(startYear, endYear, vLines) {
+        let data = [["Year", "Data", "vLines"]];
+        let i = -Math.round((endYear - startYear) / 2);
+        let scale = 15 / (endYear - startYear);
+        for (let year = startYear; year <= endYear; year++) {
+          data.push([year, s_curve(i * scale), null]);
+          if (vLines.includes(year)) {
+            data.push([year, s_curve(i * scale), 1]);
+            data.push([year, s_curve(i * scale), 0]);
+          }
+
+          i++;
+        }
+
+        return data;
+      }
+
+      function getTicks() {
+        let nameInputs = Array.from(document.querySelectorAll("#name > input"));
+        let yearInputs = Array.from(document.querySelectorAll("#year > input"));
+        let years = yearInputs.map((item) => parseInt(item.value));
+        let names = nameInputs.map((item) => item.value);
+
+        let vLines = [];
+
+        let yearsSorted = years.sort((a, b) => a - b);
+        for (let i = 0; i < yearsSorted.length - 1; i++) {
+          vLines.push(Math.round(yearsSorted[i] / 2 + yearsSorted[i + 1] / 2));
+        }
+
+        let ticks = [];
+        for (let i = 0; i < vLines.length; i++) {
+          ticks.push({
+            v: vLines[i],
+            f: vLines[i],
+          });
+        }
+
+        for (let i = 0; i < vLines.length - 1; i++) {
+          ticks.push({
+            v: vLines[i] / 2 + vLines[i + 1] / 2,
+            f: names[
+              years.indexOf(
+                years.filter(
+                  (year) => vLines[i] < year && year < vLines[i + 1]
+                )[0]
+              )
+            ],
+          });
+        }
+
+        ticks.push({
+          v: yearsSorted[yearsSorted.length - 1],
+          f: names[years.indexOf(yearsSorted[yearsSorted.length - 1])],
+        });
+        ticks.push({
+          v: yearsSorted[0],
+          f: names[years.indexOf(yearsSorted[0])],
+        });
+
+        let data = {
+          vLines: vLines,
+          ticks: ticks,
+          years: years,
+        };
+
+        console.log(data);
+        return data;
+      }
+
+      function removeInput(index) {
+        let input1 = Array.from(document.querySelectorAll("#name > input"));
+        let input2 = Array.from(document.querySelectorAll("#year > input"));
+        let buttons = Array.from(
+          document.querySelectorAll("#remove_buttons > button")
+        );
+
+        input1[index].remove();
+        input2[index].remove();
+        buttons[index].remove();
+
+        buttons.splice(index, 1);
+        nInput = 0;
+        buttons.forEach((button) => {
+          button.setAttribute("onclick", `removeInput(${nInput++})`);
+          console.log(nInput);
+        });
+      }
+
+      function addInput(name = null, year = null) {
+        let newInput1 = document.createElement("input");
+        let newInput2 = document.createElement("input");
+        let removeButton = document.createElement("button");
+        removeButton.innerHTML = "-Remove";
+        removeButton.setAttribute("onclick", `removeInput(${nInput++})`);
+        newInput1.style = "margin-left: 10px;";
+        newInput2.style = "margin-left: 10px;";
+        newInput1.value = name;
+        newInput2.value = year;
+        removeButton.style = "margin-left: 110px;";
+        let button = document.getElementById("add_input");
+        let nameInputs = document.getElementById("name");
+        let yearInputs = document.getElementById("year");
+        let removeButtons = document.getElementById("remove_buttons");
+
+        nameInputs.insertBefore(newInput1, button);
+        yearInputs.appendChild(newInput2);
+        removeButtons.appendChild(removeButton);
+      }
+
+      function drawChart() {
+        if (firstLoad) {
+          addInput("start", 2004);
+          addInput("matured", 2030);
+          firstLoad = false;
+        }
+
+        let ticks = getTicks();
+
+        var data = google.visualization.arrayToDataTable(
+          generateS(
+            Math.min(...ticks.years),
+            Math.max(...ticks.years),
+            ticks.vLines
+          )
+        );
+
+        var options = {
+          title: document.querySelector("#name_graph").value,
+          curveType: "function",
+          legend: { position: "none" },
+          isStacked: true,
+          width: 1000,
+          height: 400,
+          vAxis: {
+            gridlines: { color: "transparent" },
+            textPosition: "none",
+          },
+          hAxis: {
+            title: "Year",
+            ticks: ticks.ticks,
+            format: "",
+            gridlines: { color: "transparent" },
+          },
+          series: {
+            0: { color: "blue" },
+            1: { color: "gray", lineDashStyle: [5, 5] },
+          },
+        };
+
+        var chart = new google.visualization.LineChart(
+          document.getElementById("curve_chart")
+        );
+
+        chart.draw(data, options);
+      }
+    </script>
+  </head>
+  <body>
+    <div id="curve_chart" style="width: 1200px; height: 500px"></div>
+    <canvas id="chartCanvas" style="display: none"></canvas>
+    <button onclick="saveAsImage()">Save as JPG</button>
+    <button onclick="google.charts.setOnLoadCallback(drawChart)">
+      Regenerate
+    </button>
+    <div style="margin-top: 10px">
+      <label>Name graph</label>
+      <input id="name_graph" value="Company Performance" />
+    </div>
+
+    <div style="margin-top: 10px; overflow-x: scroll">
+      <div id="name" style="margin-top: 10px; white-space: nowrap">
+        <label>Name</label>
+        <button id="add_input" onclick="addInput()" style="margin-left: 10px">
+          +Value
+        </button>
+      </div>
+      <div id="year" style="margin-top: 10px; white-space: nowrap">
+        <label style="margin-right: 8px">Year</label>
+      </div>
+      <div
+        id="remove_buttons"
+        style="margin-top: 10px; white-space: nowrap"
+      ></div>
+    </div>
+  </body>
+</html>
